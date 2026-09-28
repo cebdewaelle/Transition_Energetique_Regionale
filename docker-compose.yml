@@ -1,0 +1,176 @@
+#
+# La base de ce docker-compose.yml est inspirée des exemples officiels de Polaris, disponibles sur GitHub
+# (licence Apache 2.0) :
+# - RustFS : https://github.com/apache/polaris/blob/cfe70f587eb7/site/content/guides/rustfs/docker-compose.yml
+# - Persistance JDBC : https://github.com/apache/polaris/blob/2fa983df263e/site/content/guides/jdbc/docker-compose.yml
+# - Bootstrap : https://github.com/apache/polaris/blob/81158a3b8c28/site/content/guides/jdbc/docker-compose-bootstrap-db.yml
+# - Postgres : https://github.com/apache/polaris/blob/75dd1bbe7ad2/site/content/guides/assets/postgres/docker-compose-postgres.yml
+#
+
+# Connexion de Polaris à Postgres, partagée par polaris-bootstrap et polaris (ancre YAML).
+x-polaris-jdbc: &polaris-jdbc
+  POLARIS_PERSISTENCE_TYPE: relational-jdbc
+  POLARIS_PERSISTENCE_RELATIONAL_JDBC_DATABASE_TYPE: postgresql
+  QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://postgres:5432/${POSTGRES_POLARIS_DB}
+  QUARKUS_DATASOURCE_USERNAME: ${POSTGRES_USER}
+  QUARKUS_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+
+services:
+
+  rustfs:
+    image: rustfs/rustfs:1.0.0
+    ports:
+      - "9000:9000" # S3 API port
+      - "9001:9001" # Console port
+    environment:
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY}
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail http://127.0.0.1:9000/health && curl --fail http://127.0.0.1:9001/rustfs/console/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    volumes:
+      - rustfs-data:/data
+
+  postgres:
+    image: postgres:18.6
+    shm_size: 128mb
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_POLARIS_DB}
+      POSTGRES_INITDB_ARGS: "--encoding UTF8 --data-checksums"
+    command: ["postgres", "-c", "default_transaction_isolation=serializable"]
+    volumes:
+      # Depuis Postgres 18, les données sont sous /var/lib/postgresql/18/docker : on monte le dossier parent.
+      - postgres-data:/var/lib/postgresql
+      - ./docker/postgres/create-polaris-schema.sql:/docker-entrypoint-initdb.d/create-polaris-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_POLARIS_DB}"]
+      interval: 5s
+      timeout: 2s
+      retries: 15
+
+  polaris-bootstrap:
+    image: apache/polaris-admin-tool:1.8.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *polaris-jdbc
+    # Les identifiants passent par un fichier et non par --credential : l'outil affiche
+    # sa ligne de commande complète dans les logs, secret compris.
+    configs:
+      - source: polaris-bootstrap-credentials
+        target: /polaris/credentials.yaml
+    command:
+      - bootstrap
+      - --credentials-file=/polaris/credentials.yaml
+
+  polaris:
+    image: apache/polaris:1.8.0
+    ports:
+      # API port
+      - "8181:8181"
+    depends_on:
+      rustfs:
+        condition: service_healthy
+      setup_bucket:
+        condition: service_completed_successfully
+      polaris-bootstrap:
+        condition: service_completed_successfully
+    environment:
+      <<: *polaris-jdbc
+      AWS_REGION: ${AWS_REGION}
+      AWS_ACCESS_KEY_ID: ${RUSTFS_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${RUSTFS_SECRET_KEY}
+      POLARIS_BOOTSTRAP_CREDENTIALS: POLARIS,${POLARIS_ADMIN_CLIENT_ID},${POLARIS_ADMIN_CREDENTIALS}
+      polaris.realm-context.realms: POLARIS
+      quarkus.otel.sdk.disabled: "true"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8182/q/health"]
+      interval: 2s
+      timeout: 10s
+      retries: 10
+      start_period: 10s
+
+  setup_bucket:
+    image: amazon/aws-cli:2.37.4
+    depends_on:
+      rustfs:
+        condition: service_healthy
+    environment:
+      AWS_REGION: ${AWS_REGION}
+      AWS_ACCESS_KEY_ID: ${RUSTFS_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${RUSTFS_SECRET_KEY}
+      AWS_ENDPOINT_URL: http://rustfs:9000
+    entrypoint: "/bin/sh"
+    command:
+      - "-c"
+      - >-
+        echo Creating RustFS bucket... &&
+        aws s3 mb s3://${BUCKET_NAME} &&
+        aws s3 ls &&
+        echo Bucket setup complete.
+
+  polaris-setup:
+    image: alpine/curl:8.22.0
+    depends_on:
+      polaris:
+        condition: service_healthy
+    environment:
+      - CLIENT_ID=${POLARIS_ADMIN_CLIENT_ID}
+      - CLIENT_SECRET=${POLARIS_ADMIN_CREDENTIALS}
+      - CATALOG_NAME=${CATALOG_NAME}
+      - S3_ENDPOINT=${S3_ENDPOINT:-http://localhost:9000}
+    volumes:
+      - ./docker/polaris/:/polaris
+    entrypoint: "/bin/sh"
+    command:
+      - "-c"
+      - >-
+        source /polaris/obtain-token.sh &&
+        echo Creating catalog... &&
+        export STORAGE_CONFIG_INFO='{"storageType":"S3",
+          "endpoint":"'$$S3_ENDPOINT'",
+          "endpointInternal":"http://rustfs:9000",
+          "pathStyleAccess":true,
+          "region":"${AWS_REGION}"}' &&
+        export STORAGE_LOCATION='s3://${BUCKET_NAME}' &&
+        /polaris/create-catalog.sh POLARIS $$TOKEN &&
+        echo Extra grants... &&
+        curl \
+          --fail-with-body \
+          -H "Authorization: Bearer $$TOKEN" \
+          -H 'Content-Type: application/json' \
+          -X PUT \
+          http://polaris:8181/api/management/v1/catalogs/${CATALOG_NAME}/catalog-roles/catalog_admin/grants \
+          -d '{"type":"catalog", "privilege":"CATALOG_MANAGE_CONTENT"}' &&
+        echo Done. &&
+        touch /tmp/polaris-setup-done &&
+        tail -f /dev/null
+    healthcheck:
+      interval: 1s
+      timeout: 10s
+      retries: 240
+      test: ["CMD", "test", "-f", "/tmp/polaris-setup-done"]
+
+volumes:
+  rustfs-data:
+  postgres-data:
+
+configs:
+  # Fichier généré par Compose à partir du .env et monté dans polaris-bootstrap :
+  # il n'existe pas sur le disque du projet et n'est donc jamais committé.
+  # Format : https://github.com/apache/polaris/blob/4c1433d9ce10/polaris-core/src/test/resources/org/apache/polaris/core/persistence/bootstrap/credentials.yaml
+  polaris-bootstrap-credentials:
+    content: |
+      POLARIS:
+        client-id: ${POLARIS_ADMIN_CLIENT_ID}
+        client-secret: ${POLARIS_ADMIN_CREDENTIALS}
