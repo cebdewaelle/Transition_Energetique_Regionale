@@ -7,9 +7,10 @@ l'avancement (difficultés rencontrées, décisions prises) est consigné dans
 ## Principe
 
 Je construis d'abord un flux complet de bout en bout sur une seule source
-de données simple (Open-Meteo), avant d'étendre aux autres sources (Enedis,
-ODRE) et aux indicateurs. Chaque brique est validée manuellement avant
-d'être orchestrée.
+de données simple (Open-Meteo), avant d'étendre aux autres sources (données
+éCO2mix et registre des installations, publiés sur l'ODRE) et aux
+indicateurs. Chaque brique est validée manuellement avant d'être
+orchestrée.
 
 ## Environnement de travail
 
@@ -35,8 +36,9 @@ reconstruits par le pipeline.
 - [x] **jq** : lecture et filtrage des réponses JSON des API.
 - [x] **AWS CLI 2.37.9** : client S3 pour inspecter RustFS, avec un profil
       `rustfs` (`endpoint_url` sur `http://localhost:9000`,
-      `s3.addressing_style` en `path`). J'ai écarté le client `rc` de
-      RustFS : redondant avec AWS CLI, et encore en version 0.1.x.
+      `s3.addressing_style` en `path`), configuré dans un dossier `~/.aws`
+      Linux. J'ai écarté le client `rc` de RustFS : redondant avec AWS
+      CLI, et encore en version 0.1.x.
 - [x] **DuckDB 1.5.6** : lecture des tables Iceberg en dehors de
       ClickHouse, notamment pour le time travel.
 - [x] **clickhouse-client** : pas d'installation locale. J'utilise le
@@ -73,8 +75,12 @@ Ajoutées au fil des étapes :
    `up -d`).
 
 3. **Premier script d'ingestion** : Open-Meteo (gratuite, sans clé API).
-   Un script Python appelle l'API et écrit une table Iceberg avec PyIceberg
-   dans RustFS, via le catalogue Polaris. Il est lancé à la main, sans
+   Un script Python récupère la météo historique en un point par
+   département métropolitain (centre du département) : température, vent
+   à 100 m, rayonnement solaire, précipitations et neige. Il écrit une
+   table Iceberg avec PyIceberg dans RustFS, via le catalogue Polaris. Il
+   s'appuie sur une table de référence des départements (code, région,
+   coordonnées du centre, population). Il est lancé à la main, sans
    orchestration.
 
 4. **ClickHouse** : ajout au compose, et lecture de la table Iceberg de
@@ -86,10 +92,25 @@ Ajoutées au fil des étapes :
 6. **Orchestration Prefect** : flow d'ingestion, puis flow qui déclenche
    `dbt run`.
 
-7. **Autres sources** : Enedis et ODRE, sur le même modèle que le flux
-   Open-Meteo (écriture Iceberg, lecture ClickHouse, modèles dbt).
+7. **Autres sources** : éCO2mix régional et registre national des
+   installations (ODRE), sur le même modèle que le flux Open-Meteo
+   (écriture Iceberg, lecture ClickHouse, modèles dbt). C'est à cette
+   étape que la météo est agrégée par région, avec les pondérations
+   décrites dans le README.
 
 8. **Metabase** : premier tableau de bord sur les tables Gold.
 
 9. **Tests et CI**, en continu à chaque étape : tests unitaires puis
    d'intégration, enrichissement du workflow GitHub Actions.
+
+## Pistes pour une version ultérieure
+
+- DJU calculés aussi avec la méthode COSTIC, pour comparer laquelle suit
+  le mieux la consommation.
+- Débits des rivières (Hub'Eau) pour mieux expliquer la production
+  hydraulique.
+- Consommation par secteur (résidentiel, tertiaire, industrie), via
+  l'Agence ORE.
+- Filières non renouvelables (nucléaire, thermique fossile), déjà présentes dans
+  éCO2mix.
+- Zoom infrarégional (départements, voire IRIS).
