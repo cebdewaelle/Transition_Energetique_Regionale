@@ -196,3 +196,89 @@ catalogue Polaris dans un premier `docker-compose.yml`.
 **Prochaine étape** : commit et PR de `feature/rustfs-polaris` vers
 `develop`, puis étape 3 : premier script d'ingestion Open-Meteo avec
 PyIceberg.
+
+## 2026-10-06
+
+**Objectif du jour** : finir d'installer les outils en ligne de commande
+avant de passer à l'ingestion.
+
+**Fait** :
+- PR #2 (stockage et catalogue) fusionnée dans `develop`.
+- **AWS CLI v2** installée avec l'installateur officiel (le paquet apt
+  `awscli` est l'ancienne version 1), et un profil `rustfs` :
+  identifiants RustFS, `endpoint_url` sur `http://localhost:9000`,
+  `s3.addressing_style` en `path`. Vérifié avec
+  `aws --profile rustfs s3 ls` : le bucket est bien retrouvé dans le
+  volume.
+- **DuckDB 1.5.6** installé.
+- Client `rc` de RustFS écarté (redondant avec AWS CLI, version 0.1.x).
+- `clickhouse-client` non installé en local : j'utiliserai celui de
+  l'image du serveur, toujours à la même version.
+
+**Difficultés rencontrées** :
+- **Configuration AWS sur le disque Windows** : `~/.aws` était un lien
+  vers le dossier Windows de mon profil, créé par un outil installé
+  auparavant. La configuration, clé secrète comprise, s'est donc
+  retrouvée côté Windows, où les droits Linux ne s'appliquent pas (tous
+  les fichiers y apparaissent en `777`). Remplacé par un vrai dossier
+  Linux (droits `700` pour le dossier, `600` pour les fichiers), et
+  copie Windows supprimée.
+
+**Prochaine étape** : clarifier les sources de données avant d'écrire le
+premier script d'ingestion.
+
+## 2026-10-07
+
+**Objectif du jour** : choisir précisément les données à utiliser et
+remettre à plat la documentation.
+
+**Fait** :
+- Documentation réorganisée : `docs/` contient le journal et la feuille
+  de route (PR #3 fusionnée dans `develop`).
+- README revu : moins détaillé, sans les éléments qui n'existent pas
+  encore (nombre de tests, tables, résultats chiffrés), avec Polaris et
+  PostgreSQL dans la stack, les tests et la CI formulés comme une cible,
+  et des sources citées pour chaque explication. Schéma d'architecture
+  retiré pour l'instant : je préfère une image à un schéma en texte.
+- Sources de données choisies et vérifiées directement sur les API des
+  portails.
+
+**Décisions prises** :
+- **Granularité régionale, sans codes IRIS** : les 12 régions
+  métropolitaines couvertes par éCO2mix (la Corse n'y figure pas).
+  Partir de données déjà publiées par région évite la correspondance
+  IRIS → région, les changements de codes géographiques dans le temps et
+  le masquage des petites zones pour secret statistique.
+- **Sources** :
+  - éCO2mix régional consolidé et définitif (ODRE) : consommation et
+    production par filière, au pas de 30 minutes, depuis 2013. Il fournit
+    aussi les taux de couverture et de charge calculés par RTE, qui
+    serviront de référence pour tester mes propres calculs ;
+  - registre national des installations de production (ODRE) :
+    puissance installée par filière et par commune.
+- **Météo par région** : Open-Meteo raisonne par points, pas par zones.
+  Un point par département, puis une moyenne régionale pondérée selon ce
+  que chaque variable explique : température → population, vent à
+  100 m → puissance éolienne installée, rayonnement → puissance solaire
+  installée, précipitations et neige (en cumuls) → puissance hydraulique
+  installée.
+- **DJU** : méthode « météo », base 18 °C, calculés par département puis
+  agrégés par région. La méthode COSTIC est gardée pour une version
+  ultérieure.
+- **Hydraulique** : analysée au mois ou à la saison, car les barrages
+  sont pilotés selon la demande et la pluie agit avec un décalage.
+  **Bioénergies** : filières pilotables, sans indicateur météo. Hypothèse
+  à tester : la cogénération suivrait les DJU.
+- Terme retenu : « hydraulique », comme dans les données (éCO2mix et
+  registre).
+
+**Difficultés rencontrées** :
+- Le portail Enedis propose des centaines de jeux de données : il a été
+  plus efficace de partir de la question (comparer des régions) que des
+  données disponibles.
+- Faire correspondre les codes IRIS et les points météo n'était pas
+  possible simplement : la granularité régionale et la pondération par
+  département règlent les deux problèmes.
+
+**Prochaine étape** : étape 3, table de référence des départements et
+premier script d'ingestion Open-Meteo.
