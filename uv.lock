@@ -1095,6 +1095,7 @@ source = { editable = "." }
 dependencies = [
     { name = "pyiceberg", extra = ["pyarrow"] },
     { name = "python-dotenv" },
+    { name = "requests" },
 ]
 
 [package.dev-dependencies]
@@ -1109,6 +1110,7 @@ dev = [
 requires-dist = [
     { name = "pyiceberg", extras = ["pyarrow"], specifier = ">=0.12.0" },
     { name = "python-dotenv", specifier = ">=1.2.4" },
+    { name = "requests", specifier = ">=2.34.2" },
 ]
 
 [package.metadata.requires-dev]
