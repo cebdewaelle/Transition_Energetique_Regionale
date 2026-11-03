@@ -355,3 +355,68 @@ Iceberg depuis Python.
 ingestion Open-Meteo sur un département et un mois.
 
 ------------------------------------------------------------------------------
+## 2026-11-03
+
+**Objectif du jour** : table de référence des départements et première
+ingestion Open-Meteo.
+
+**Fait** :
+- **Table `bronze.ref_departements`** : 94 départements, avec leur région,
+  leur centre (moyenne des centres des communes) et leur population, à partir
+  de l'API Géo. Contrôlée sur le nombre de lignes et les valeurs du Nord, de
+  Paris et de l'Isère. Colonne `date_extraction` ajoutée par évolution de
+  schéma Iceberg, sans recréer la table.
+- **Table `bronze.meteo_horaire`** : ingestion d'Open-Meteo sur un département
+  et un mois (Nord, janvier 2024), soit 744 lignes, sans valeur vide,
+  partitionnées par mois. Horodatages en UTC. Six variables : température à
+  2 m, vent à 100 m (en m/s), rayonnement, précipitations, chutes de neige et
+  épaisseur de neige.
+- Contrôle du nombre de lignes avant écriture : départements × jours × 24.
+- Tests unitaires (42) sans réseau ni Docker, exécutés aussi en CI : calculs,
+  appels API simulés, schémas, contrôles avant écriture, partitionnement.
+
+**Décisions prises** :
+- **`requests` et JSON** plutôt que le client `openmeteo-requests` : lecture
+  des variables par leur nom et non par leur position, tests plus simples, gain
+  de performance négligeable ici. Pas d'asynchrone : la contrainte est la
+  limite d'appels de l'API, pas la vitesse.
+- **Pas de cache de requêtes** : la table Iceberg joue ce rôle, et un cache
+  pourrait masquer des données corrigées à la source.
+- **Fuseau `GMT`** pour Open-Meteo. Avec un fuseau local, l'API applique un
+  décalage fixe calculé au moment de la requête, sans tenir compte des
+  changements d'heure de la période demandée. Le résultat serait décalé d'une
+  heure sur une partie de l'année.
+
+**Difficultés rencontrées** :
+- **Changements d'heure dans éCO2mix** : la source compte toujours 48 lignes
+  par jour local, alors que ces journées durent 23 ou 25 heures. Observé sur
+  les Hauts-de-France en 2024 :
+  - le 31 mars, l'heure locale 02:00-02:30, qui n'existe pas, est présente et
+    reprend les instants et les valeurs de 03:00-03:30 : 2 doublons ;
+  - le 27 octobre, les relevés de 00:00 et 00:30 UTC sont absents : 2 demi-heures
+    manquantes.
+
+  Sur une année complète, doublons et trou se compensent : le nombre de lignes
+  est juste alors que les données ne le sont pas. Sur la colonne `date`, le
+  comptage ne détecte jamais rien. À confirmer sur toutes les régions et années.
+  Conséquences pour Silver : filtrer et joindre uniquement sur `date_heure`,
+  dédoublonner, et tester l'unicité et la continuité, en plus du comptage.
+- **Écriture partitionnée** : le calcul des partitions demande le composant
+  `pyiceberg-core`, à installer en plus.
+- **Purge refusée par Polaris** : `purge_table` est désactivée par défaut
+  (`DROP_WITH_PURGE_ENABLED`), et `drop_table` ne supprime pas les fichiers.
+- **Anciens fichiers Parquet** : un `overwrite` ne supprime rien physiquement.
+  Les fichiers restent accessibles par les anciens snapshots, c'est le principe
+  du time travel. Ils ne doivent pas être supprimés à la main.
+- **Données modélisées** : Open-Meteo peut indiquer de la neige par 7 °C au sol
+  (0,14 cm le 1er janvier 2024 dans le Nord). Valeur conservée en Bronze, à
+  contrôler en Silver.
+
+**Références** :
+- [Open-Meteo, API météo historique](https://open-meteo.com/en/docs/historical-weather-api)
+- [PyIceberg, évolution du partitionnement](https://py.iceberg.apache.org/api/#partition-evolution)
+
+**Prochaine étape** : écrire plusieurs départements et périodes sans
+s'écraser mutuellement, avec réessais et reprise, puis 2024 et 2025.
+
+------------------------------------------------------------------------------
