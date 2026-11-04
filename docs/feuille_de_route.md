@@ -92,8 +92,9 @@ Ajoutées au fil des étapes :
    qualité sur la source et le modèle (valeurs vides, unicité, complétude,
    plages de valeurs).
 
-6. **Orchestration Prefect** : flow d'ingestion, puis flow qui déclenche
-   `dbt run`.
+6. ✅ **Orchestration Prefect** (2026-11-04) : flow qui enchaîne l'ingestion,
+   `dbt run` et `dbt test`, avec un déploiement mensuel. Serveur Prefect dans le
+   compose, flow exécuté sur la machine.
 
 7. **Autres sources** : éCO2mix régional et registre national des
    installations (ODRE), sur le même modèle que le flux Open-Meteo

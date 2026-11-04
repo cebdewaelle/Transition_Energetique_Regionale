@@ -544,3 +544,57 @@ stack complet.
 **Prochaine étape** : étape 6, orchestration avec Prefect.
 
 ------------------------------------------------------------------------------
+## 2026-11-04 (fin de journée)
+
+**Objectif du jour** : étape 6, orchestration avec Prefect.
+
+**Fait** :
+- **Serveur Prefect** dans le compose (version 3.9.1), avec son volume et son
+  interface sur le port 4200.
+- **Flow `pipeline-meteo`** : ingestion Open-Meteo, puis `dbt run`, puis
+  `dbt test`. Sans paramètres, il traite le mois précédent.
+- **Déploiement `mensuel`** avec `serve` : le 10 de chaque mois à 6 h UTC, et
+  lancement manuel possible depuis l'interface.
+- **Données étendues à 34 mois** : janvier 2024 à octobre 2026, soit 2 334 960
+  lignes dans Silver.
+- **Test dbt de continuité** : aucun mois manquant entre le premier et le dernier
+  mois chargés. Il y a maintenant 22 tests dbt et 79 tests Python.
+- Échecs vérifiés en conditions réelles : ingestion en erreur, `dbt test` en
+  échec et date future. Dans chaque cas, le flow passe à `Failed` et les étapes
+  suivantes ne se lancent pas.
+
+**Décisions prises** :
+- **Le flow s'exécute sur la machine, pas dans un conteneur** : il garde
+  `localhost` pour Polaris et RustFS, sans revoir la question des deux endpoints.
+- **`pipeline.py` dans le paquet** : Prefect n'impose pas de dossier comme le
+  `dags/` d'Airflow, un flow est une fonction Python.
+- **Lancement de dbt en sous-processus**, avec contrôle du code de retour :
+  sans ce contrôle, un `dbt test` en échec passerait pour un succès.
+- **Planification le 10 du mois** : les données d'octobre étaient déjà disponibles
+  le 4 novembre, ce qui laisse de la marge.
+- **Trou comblé plutôt que mois retiré** : janvier à septembre 2026 ont été
+  chargés, pour permettre les moyennes mobiles et les comparaisons entre mois.
+
+**Difficultés rencontrées** :
+- **`dbt run` absent du flow** : le run restait au vert, car ses tests contrôlaient
+  l'ancienne table Silver et le mois testé était déjà chargé. Détecté par un test
+  sur l'ordre des étapes.
+- **Réessais inutiles** : une erreur 400 sur une date future a été réessayée
+  pendant 10 minutes. Une date de fin non passée est maintenant refusée au début
+  du flow.
+- **Trou de données involontaire** : un lancement sans paramètres a ajouté octobre
+  2026 sans janvier à septembre. Le test de complétude contrôlait uniquement les
+  mois présents, d'où le test de continuité.
+
+**Limites** :
+- **La planification dépend du terminal du `serve`** : s'il est fermé le 10 du
+  mois, l'exécution n'a pas lieu.
+- **Les tests dbt ne tournent pas en CI**, car ils ont besoin du stack complet.
+
+**Références** :
+- [Prefect, planifier avec `serve`](https://docs.prefect.io/v3/how-to-guides/deployments/run-flows-in-local-processes)
+
+**Prochaine étape** : étape 7, éCO2mix régional et registre des installations,
+sur la même période que la météo.
+
+------------------------------------------------------------------------------
