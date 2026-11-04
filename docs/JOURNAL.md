@@ -460,3 +460,45 @@ ingestion Open-Meteo.
 **Prochaine étape** : étape 4, ajouter ClickHouse et lire les tables Iceberg.
 
 ------------------------------------------------------------------------------
+## 2026-11-04
+
+**Objectif du jour** : étape 4, ajouter ClickHouse et lui faire lire les tables
+Iceberg.
+
+**Fait** :
+- **Service `clickhouse`** dans le compose (version 26.8.36.3, LTS) : volume
+  persistant, identifiants dans le `.env`, healthcheck sur `/ping`.
+- **Base `polaris`** créée au premier démarrage par un script d'initialisation,
+  avec le moteur `DataLakeCatalog`. ClickHouse voit les tables du catalogue sans
+  import : 94 départements et 1 649 136 lignes de météo.
+- Jointure validée entre la météo et les départements : température de janvier
+  2024 pondérée par la population, 3,89 °C pour l'Île-de-France.
+- **Time travel validé dans ClickHouse** (`iceberg_snapshot_id` et
+  `iceberg_timestamp_ms`), en lecture d'un ancien snapshot.
+- Connexion conservée après un `docker compose down` puis `up -d`.
+
+**Décisions prises** :
+- **Clés RustFS configurées dans ClickHouse** (`vended_credentials = 0`) : avec
+  les identifiants fournis par Polaris, la lecture échoue en 404. Cause probable,
+  non prouvée : l'endpoint `localhost:9000` transmis aux clients, qui ne désigne
+  pas RustFS depuis un conteneur.
+- **Seul le port HTTP 8123 est publié** : le port natif 9000 de ClickHouse reste
+  interne, RustFS occupe déjà ce port sur la machine.
+
+**Difficultés rencontrées** :
+- **Script d'initialisation** : SQL placé directement dans un fichier `.sh`, donc
+  exécuté par bash (`SET: command not found`). Le SQL doit être transmis à
+  `clickhouse-client`. Le script ne s'exécute que si le volume est vide : après
+  un échec, il faut supprimer le volume pour le relancer.
+- **Clés stockées dans la base** : si une clé change, il faudra supprimer et
+  recréer la base `polaris`.
+- **Syntaxe des tables** : le nom complet s'écrit entre backticks,
+  `` polaris.`bronze.meteo_horaire` ``.
+
+**Références** :
+- [ClickHouse, guide du catalogue Polaris](https://github.com/ClickHouse/ClickHouse/blob/fb4661a3478a/docs/guides/use-cases/data-warehousing/polaris-catalog.mdx)
+- [ClickHouse, moteur de base DataLakeCatalog](https://github.com/ClickHouse/ClickHouse/blob/master/docs/reference/engines/database-engines/datalake.mdx)
+
+**Prochaine étape** : étape 5, squelette dbt avec un premier modèle Silver.
+
+------------------------------------------------------------------------------

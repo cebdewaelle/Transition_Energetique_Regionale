@@ -69,7 +69,7 @@ cp .env.example .env    # puis renseigner ses propres valeurs
 docker compose up -d
 ```
 
-Lance RustFS, PostgreSQL et Polaris, puis crée le bucket et le catalogue Iceberg.
+Lance RustFS, PostgreSQL, Polaris et ClickHouse, puis crée le bucket, le catalogue Iceberg et la connexion de ClickHouse au catalogue.
 
 
 # Avancement

@@ -83,8 +83,9 @@ Ajoutées au fil des étapes :
    interruption, sans doublon. Il est lancé à la main, sans orchestration.
    Chargé sur 2024 et 2025 : 1 649 136 lignes, sans doublon ni valeur vide.
 
-4. **ClickHouse** : ajout au compose, et lecture de la table Iceberg de
-   l'étape 3.
+4. ✅ **ClickHouse** (2026-11-04) : ajout au compose, et lecture des tables
+   Iceberg de l'étape 3 via le catalogue Polaris, sans import. Jointures et time
+   travel validés, connexion conservée après un redémarrage complet.
 
 5. **Squelette dbt** : projet minimal avec un premier modèle Silver sur la
    table de l'étape 3, pour valider la connexion `dbt-clickhouse`.
