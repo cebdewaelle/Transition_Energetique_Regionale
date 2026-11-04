@@ -502,3 +502,45 @@ Iceberg.
 **Prochaine étape** : étape 5, squelette dbt avec un premier modèle Silver.
 
 ------------------------------------------------------------------------------
+## 2026-11-04 (suite)
+
+**Objectif du jour** : étape 5, squelette dbt avec un premier modèle Silver.
+
+**Fait** :
+- **Projet dbt** dans `dbt/`, avec `dbt-core` 1.12.6 et `dbt-clickhouse` 1.10.3.
+  Les identifiants du profil viennent des variables d'environnement.
+- **Sources** déclarées sur les tables Iceberg vues par ClickHouse.
+- **Modèle `silver.silver_meteo_horaire`** : 1 649 136 lignes dans une table
+  MergeTree, triée par département et heure, partitionnée par mois.
+- **21 tests dbt** : valeurs vides sur toutes les colonnes et sur la source,
+  unicité du référentiel et du couple département/heure, relation avec le
+  référentiel, complétude de chaque mois, plages de valeurs plausibles.
+
+**Décisions prises** :
+- **Base `silver` plutôt que `default_silver`** : surcharge de la macro
+  `generate_schema_name`. Le préfixe de dbt sert à séparer les développeurs d'une
+  équipe, inutile ici, et les noms suivent l'architecture médaillon.
+- **`date_extraction` conservée en Silver** : peu coûteuse, utile pour la
+  traçabilité et le contrôle de fraîcheur.
+
+**Difficultés rencontrées** :
+- **Nom de table avec un point** : `bronze.meteo_horaire` est un seul nom côté
+  ClickHouse. La source doit l'indiquer dans `identifier`, avec `quoting`, pour
+  qu'il soit mis entre backticks.
+- **Colonnes nullable** : les colonnes Iceberg sont nullable, et ClickHouse les
+  refuse dans une clé de tri ou de partition. `assumeNotNull` règle le problème,
+  mais remplace une valeur vide sans le signaler : d'où les tests `not_null` sur
+  la source elle-même.
+- **Modèle vide** : un fichier non enregistré donne `Nothing to do`, sans erreur.
+- **`.env`** : dbt le charge seul, en remontant depuis le dossier courant. Une
+  variable déjà présente dans le terminal reste prioritaire.
+- **Extension VS Code** : elle utilise son propre moteur et ne voit pas ces
+  variables, d'où une erreur dans l'éditeur alors que la ligne de commande
+  fonctionne.
+
+**Limite** : les tests dbt ne tournent pas encore en CI, car ils ont besoin du
+stack complet.
+
+**Prochaine étape** : étape 6, orchestration avec Prefect.
+
+------------------------------------------------------------------------------

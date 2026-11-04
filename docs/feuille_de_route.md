@@ -87,8 +87,10 @@ Ajoutées au fil des étapes :
    Iceberg de l'étape 3 via le catalogue Polaris, sans import. Jointures et time
    travel validés, connexion conservée après un redémarrage complet.
 
-5. **Squelette dbt** : projet minimal avec un premier modèle Silver sur la
-   table de l'étape 3, pour valider la connexion `dbt-clickhouse`.
+5. ✅ **Squelette dbt** (2026-11-04) : projet minimal avec un premier modèle
+   Silver sur la table de l'étape 3, `silver.silver_meteo_horaire`, et tests de
+   qualité sur la source et le modèle (valeurs vides, unicité, complétude,
+   plages de valeurs).
 
 6. **Orchestration Prefect** : flow d'ingestion, puis flow qui déclenche
    `dbt run`.
