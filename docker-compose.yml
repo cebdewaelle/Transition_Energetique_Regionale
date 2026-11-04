@@ -187,11 +187,26 @@ services:
       timeout: 3s
       retries: 20
 
+  prefect-server:
+    image: prefecthq/prefect:3.9.1-python3.12
+    command: prefect server start --host 0.0.0.0
+    ports:
+      - "4200:4200"
+    volumes:
+      - prefect-data:/root/.prefect
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:4200/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      
 
 volumes:
   rustfs-data:
   postgres-data:
   clickhouse-data:
+  prefect-data:
+
 
 configs:
   # Fichier généré par Compose à partir du .env et monté dans polaris-bootstrap :
