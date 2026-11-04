@@ -416,7 +416,47 @@ ingestion Open-Meteo.
 - [Open-Meteo, API météo historique](https://open-meteo.com/en/docs/historical-weather-api)
 - [PyIceberg, évolution du partitionnement](https://py.iceberg.apache.org/api/#partition-evolution)
 
-**Prochaine étape** : écrire plusieurs départements et périodes sans
-s'écraser mutuellement, avec réessais et reprise, puis 2024 et 2025.
+**Suite de la journée** : passage aux 94 départements et aux 2 années.
+
+**Fait** :
+- **`bronze.meteo_horaire` chargée sur 2024 et 2025** : 1 649 136 lignes,
+  24 partitions, 94 départements avec 17 544 heures chacun, sans doublon ni
+  valeur vide.
+- Écriture par mois, tous départements confondus : chaque lot remplace
+  uniquement son mois, et n'est écrit que lorsque les 94 départements sont
+  récupérés.
+- Réessais automatiques en cas de limite d'appels ou d'erreur serveur, pause
+  d'une seconde entre les appels, et reprise qui saute les mois déjà complets.
+- Comportement vérifié sur une table Iceberg jetable (écriture, relance sans
+  appel à l'API, panne, reprise), puis en conditions réelles.
+
+**Décisions prises** :
+- **Un lot = un mois** : le lot correspond à une partition, une panne coûte au
+  plus un mois, et l'écriture par département aurait créé 2 256 commits et
+  autant de petits fichiers.
+
+**Difficultés rencontrées** :
+- **Expiration des identifiants après une heure** : le téléchargement s'est
+  arrêté en septembre 2025 sur une erreur `ACCESS_DENIED`. Les identifiants S3
+  temporaires fournis par Polaris sont valables 60 minutes, et la table n'était
+  ouverte qu'une fois au démarrage. Les 20 premiers mois étaient intacts, et la
+  reprise a terminé les 4 derniers. Correction : rouvrir la table avant chaque
+  écriture. Un test simulé ne pouvait pas le montrer : le bug n'apparaît
+  qu'après une heure d'exécution réelle.
+- **Durée sous-estimée** : un mois prend près de 3 minutes, soit environ
+  70 minutes pour 2 ans.
+- **Table neuve** : `inspect.partitions()` lève une erreur tant que la table
+  n'a jamais été écrite. Découvert en testant sur une vraie table.
+- **Filtre d'écriture** : un filtre couvrant toute la période aurait effacé les
+  mois précédents à chaque écriture. Détecté avant le lancement.
+
+**Limites à garder en tête** :
+- **Montagne mal représentée** : un point par département reste bas, 827 m pour
+  les Hautes-Alpes, et 1 303 m au plus haut (Cantal).
+- **532 lignes de neige avec plus de 5 °C** (0,03 %), à contrôler en Silver.
+- **DuckDB affiche les horodatages dans le fuseau local** : les données sont bien
+  en UTC, mais les calculs d'heure doivent préciser le fuseau.
+
+**Prochaine étape** : étape 4, ajouter ClickHouse et lire les tables Iceberg.
 
 ------------------------------------------------------------------------------

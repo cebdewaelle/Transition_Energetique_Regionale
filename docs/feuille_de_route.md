@@ -74,14 +74,14 @@ Ajoutées au fil des étapes :
    conservé après un redémarrage complet (`docker compose down` /
    `up -d`).
 
-3. **Premier script d'ingestion** : Open-Meteo (gratuite, sans clé API).
-   Un script Python récupère la météo historique en un point par
-   département métropolitain (centre du département) : température, vent
-   à 100 m, rayonnement solaire, précipitations et neige. Il écrit une
-   table Iceberg avec PyIceberg dans RustFS, via le catalogue Polaris. Il
-   s'appuie sur une table de référence des départements (code, région,
-   coordonnées du centre, population). Il est lancé à la main, sans
-   orchestration.
+3. ✅ **Premier script d'ingestion** (2026-11-03) : Open-Meteo (gratuite, sans
+   clé API). Un script Python récupère la météo historique en un point par
+   département métropolitain (centre du département) : température, vent à
+   100 m, rayonnement solaire, précipitations et neige. Il écrit par mois dans
+   une table Iceberg, avec PyIceberg, via le catalogue Polaris, à partir d'une
+   table de référence des 94 départements. Il peut être relancé après une
+   interruption, sans doublon. Il est lancé à la main, sans orchestration.
+   Chargé sur 2024 et 2025 : 1 649 136 lignes, sans doublon ni valeur vide.
 
 4. **ClickHouse** : ajout au compose, et lecture de la table Iceberg de
    l'étape 3.
