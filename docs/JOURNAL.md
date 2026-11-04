@@ -592,7 +592,7 @@ stack complet.
 - **Les tests dbt ne tournent pas en CI**, car ils ont besoin du stack complet.
 
 **Références** :
-- [Prefect, planifier avec `serve`](https://docs.prefect.io/v3/how-to-guides/deployments/run-flows-in-local-processes)
+- [Prefect, planifier avec `serve`](https://docs.prefect.io/v3/how-to-guides/deployment_infra/run-flows-in-local-processes)
 
 **Prochaine étape** : étape 7, éCO2mix régional et registre des installations,
 sur la même période que la météo.
