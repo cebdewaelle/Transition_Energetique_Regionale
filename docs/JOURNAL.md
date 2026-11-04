@@ -17,6 +17,7 @@ soutenance (difficultés rencontrées, décisions prises et pourquoi).
 
 ---
 
+------------------------------------------------------------------------------
 ## 2026-09-26
 
 **Objectif du jour** : démarrer concrètement la mise en place du projet.
@@ -45,6 +46,7 @@ des sessions précédentes.
 Linux (formation) pour garder les deux machines alignées, puis initialiser
 la structure du repo (étape 1 de la feuille de route).
 
+------------------------------------------------------------------------------
 ## 2026-09-27
 
 **Objectif du jour** : faire le ménage dans Docker et initialiser le projet
@@ -71,6 +73,7 @@ Python.
 **Prochaine étape** : mettre en place la validation des messages de commit
 et la CI.
 
+------------------------------------------------------------------------------
 ## 2026-09-28
 
 **Objectif du jour** : outillage Git (commits conventionnels, branches) et
@@ -120,6 +123,7 @@ première CI GitHub Actions.
 un premier `docker-compose.yml`, sur une branche `feature/…` créée depuis
 `develop`.
 
+------------------------------------------------------------------------------
 ## 2026-09-28 (suite)
 
 **Objectif du jour** : étape 2 de la feuille de route, stockage RustFS et
@@ -197,6 +201,7 @@ catalogue Polaris dans un premier `docker-compose.yml`.
 `develop`, puis étape 3 : premier script d'ingestion Open-Meteo avec
 PyIceberg.
 
+------------------------------------------------------------------------------
 ## 2026-10-06
 
 **Objectif du jour** : finir d'installer les outils en ligne de commande
@@ -227,6 +232,7 @@ avant de passer à l'ingestion.
 **Prochaine étape** : clarifier les sources de données avant d'écrire le
 premier script d'ingestion.
 
+------------------------------------------------------------------------------
 ## 2026-10-07
 
 **Objectif du jour** : choisir précisément les données à utiliser et
@@ -282,3 +288,175 @@ remettre à plat la documentation.
 
 **Prochaine étape** : étape 3, table de référence des départements et
 premier script d'ingestion Open-Meteo.
+
+------------------------------------------------------------------------------
+## 2026-11-02
+
+**Objectif du jour** : organiser l'étape 3 et valider l'écriture d'une table
+Iceberg depuis Python.
+
+**Fait** :
+- Étape 3 découpée : test d'écriture, table de référence des départements,
+  puis ingestion Open-Meteo, d'abord sur un petit périmètre.
+- `pyiceberg` et `python-dotenv` ajoutés au projet.
+- **Test d'écriture de bout en bout réussi**, avec un script jetable :
+  connexion à Polaris, création du namespace `bronze`, écriture de 3 lignes
+  dans une table de test, relecture, puis purge de la table. Les fichiers de
+  données et de métadonnées sont apparus dans le bucket, puis ont disparu
+  après la purge.
+- Lecture de la structure d'une table Iceberg dans le bucket : fichiers
+  Parquet (`data/`), versions de la table (`metadata.json`), snapshots et
+  manifests (`.avro`).
+
+**Décisions prises** :
+- **Connexion à Polaris en tant que catalogue REST** : PyIceberg ne connaît
+  pas Polaris en tant que tel, seulement le protocole REST d'Iceberg.
+- **Pas de clés RustFS côté client** : les identifiants Polaris suffisent,
+  Polaris fournit l'accès au stockage (`vended-credentials`, comportement par
+  défaut de PyIceberg).
+- **Point météo de chaque département** : centre géographique, approché par
+  la moyenne des centres des communes. L'API Géo ne donne ni centre ni
+  population au niveau du département, ces deux valeurs sont donc agrégées à
+  partir des communes.
+- La chaîne sera d'abord validée sur **2 ans de données, 2024 et 2025**, avant
+  de lancer l'historique complet : ce sont les deux dernières années complètes
+  et en « données définitives » d'éCO2mix. Côté Open-Meteo, cela représente
+  environ 4 900 appels, à étaler sur plus d'une heure.
+
+**Difficultés rencontrées** :
+- **Limites de l'offre gratuite d'Open-Meteo** : 600 appels par minute, 5 000
+  par heure, 10 000 par jour et 300 000 par mois. Une requête de plus de
+  2 semaines compte pour plusieurs appels : l'historique complet représente
+  environ 33 500 appels pour 94 départements, soit au moins 4 jours de
+  téléchargement. Il faudra découper par année, gérer les réessais (l'API
+  renvoie parfois une erreur 503) et permettre la reprise.
+- **Documentation** : rien sur « Polaris » dans la documentation de
+  PyIceberg, il faut chercher « REST Catalog ».
+- **Trou dans des données « définitives »** : dans l'export éCO2mix téléchargé
+  en octobre, Auvergne-Rhône-Alpes s'arrête le 16 février 2025, soit 15 270
+  lignes manquantes. Le 7 octobre, la source annonçait le même nombre de lignes
+  que ce fichier (2 859 546). Elle en compte aujourd'hui 2 874 816, avec une
+  année 2025 complète pour cette région : le trou était donc très probablement
+  dans la source, corrigé depuis. Seuls les nombres de lignes ont été comparés.
+  Conséquences :
+  - export à retélécharger avant l'étape 7 ;
+  - test de complétude à prévoir dans dbt : 17 520 lignes par région et par an,
+    17 568 pour une année bissextile ;
+  - chargement incrémental à concevoir pour pouvoir recharger des périodes
+    passées, et pas seulement les nouvelles dates.
+
+**Références** :
+- [PyIceberg, configuration du catalogue REST](https://py.iceberg.apache.org/configuration/#rest-catalog)
+- [PyIceberg, API Python (namespaces, tables, écriture, lecture)](https://py.iceberg.apache.org/api/)
+- [Open-Meteo, limites et décompte des appels](https://open-meteo.com/en/pricing)
+- [API Géo](https://geo.api.gouv.fr/)
+
+**Prochaine étape** : table de référence `bronze.ref_departements`, puis
+ingestion Open-Meteo sur un département et un mois.
+
+------------------------------------------------------------------------------
+## 2026-11-03
+
+**Objectif du jour** : table de référence des départements et première
+ingestion Open-Meteo.
+
+**Fait** :
+- **Table `bronze.ref_departements`** : 94 départements, avec leur région,
+  leur centre (moyenne des centres des communes) et leur population, à partir
+  de l'API Géo. Contrôlée sur le nombre de lignes et les valeurs du Nord, de
+  Paris et de l'Isère. Colonne `date_extraction` ajoutée par évolution de
+  schéma Iceberg, sans recréer la table.
+- **Table `bronze.meteo_horaire`** : ingestion d'Open-Meteo sur un département
+  et un mois (Nord, janvier 2024), soit 744 lignes, sans valeur vide,
+  partitionnées par mois. Horodatages en UTC. Six variables : température à
+  2 m, vent à 100 m (en m/s), rayonnement, précipitations, chutes de neige et
+  épaisseur de neige.
+- Contrôle du nombre de lignes avant écriture : départements × jours × 24.
+- Tests unitaires (42) sans réseau ni Docker, exécutés aussi en CI : calculs,
+  appels API simulés, schémas, contrôles avant écriture, partitionnement.
+
+**Décisions prises** :
+- **`requests` et JSON** plutôt que le client `openmeteo-requests` : lecture
+  des variables par leur nom et non par leur position, tests plus simples, gain
+  de performance négligeable ici. Pas d'asynchrone : la contrainte est la
+  limite d'appels de l'API, pas la vitesse.
+- **Pas de cache de requêtes** : la table Iceberg joue ce rôle, et un cache
+  pourrait masquer des données corrigées à la source.
+- **Fuseau `GMT`** pour Open-Meteo. Avec un fuseau local, l'API applique un
+  décalage fixe calculé au moment de la requête, sans tenir compte des
+  changements d'heure de la période demandée. Le résultat serait décalé d'une
+  heure sur une partie de l'année.
+
+**Difficultés rencontrées** :
+- **Changements d'heure dans éCO2mix** : la source compte toujours 48 lignes
+  par jour local, alors que ces journées durent 23 ou 25 heures. Observé sur
+  les Hauts-de-France en 2024 :
+  - le 31 mars, l'heure locale 02:00-02:30, qui n'existe pas, est présente et
+    reprend les instants et les valeurs de 03:00-03:30 : 2 doublons ;
+  - le 27 octobre, les relevés de 00:00 et 00:30 UTC sont absents : 2 demi-heures
+    manquantes.
+
+  Sur une année complète, doublons et trou se compensent : le nombre de lignes
+  est juste alors que les données ne le sont pas. Sur la colonne `date`, le
+  comptage ne détecte jamais rien. À confirmer sur toutes les régions et années.
+  Conséquences pour Silver : filtrer et joindre uniquement sur `date_heure`,
+  dédoublonner, et tester l'unicité et la continuité, en plus du comptage.
+- **Écriture partitionnée** : le calcul des partitions demande le composant
+  `pyiceberg-core`, à installer en plus.
+- **Purge refusée par Polaris** : `purge_table` est désactivée par défaut
+  (`DROP_WITH_PURGE_ENABLED`), et `drop_table` ne supprime pas les fichiers.
+- **Anciens fichiers Parquet** : un `overwrite` ne supprime rien physiquement.
+  Les fichiers restent accessibles par les anciens snapshots, c'est le principe
+  du time travel. Ils ne doivent pas être supprimés à la main.
+- **Données modélisées** : Open-Meteo peut indiquer de la neige par 7 °C au sol
+  (0,14 cm le 1er janvier 2024 dans le Nord). Valeur conservée en Bronze, à
+  contrôler en Silver.
+
+**Références** :
+- [Open-Meteo, API météo historique](https://open-meteo.com/en/docs/historical-weather-api)
+- [PyIceberg, évolution du partitionnement](https://py.iceberg.apache.org/api/#partition-evolution)
+
+**Suite de la journée** : passage aux 94 départements et aux 2 années.
+
+**Fait** :
+- **`bronze.meteo_horaire` chargée sur 2024 et 2025** : 1 649 136 lignes,
+  24 partitions, 94 départements avec 17 544 heures chacun, sans doublon ni
+  valeur vide.
+- Écriture par mois, tous départements confondus : chaque lot remplace
+  uniquement son mois, et n'est écrit que lorsque les 94 départements sont
+  récupérés.
+- Réessais automatiques en cas de limite d'appels ou d'erreur serveur, pause
+  d'une seconde entre les appels, et reprise qui saute les mois déjà complets.
+- Comportement vérifié sur une table Iceberg jetable (écriture, relance sans
+  appel à l'API, panne, reprise), puis en conditions réelles.
+
+**Décisions prises** :
+- **Un lot = un mois** : le lot correspond à une partition, une panne coûte au
+  plus un mois, et l'écriture par département aurait créé 2 256 commits et
+  autant de petits fichiers.
+
+**Difficultés rencontrées** :
+- **Expiration des identifiants après une heure** : le téléchargement s'est
+  arrêté en septembre 2025 sur une erreur `ACCESS_DENIED`. Les identifiants S3
+  temporaires fournis par Polaris sont valables 60 minutes, et la table n'était
+  ouverte qu'une fois au démarrage. Les 20 premiers mois étaient intacts, et la
+  reprise a terminé les 4 derniers. Correction : rouvrir la table avant chaque
+  écriture. Un test simulé ne pouvait pas le montrer : le bug n'apparaît
+  qu'après une heure d'exécution réelle.
+- **Durée sous-estimée** : un mois prend près de 3 minutes, soit environ
+  70 minutes pour 2 ans.
+- **Table neuve** : `inspect.partitions()` lève une erreur tant que la table
+  n'a jamais été écrite. Découvert en testant sur une vraie table.
+- **Filtre d'écriture** : un filtre couvrant toute la période aurait effacé les
+  mois précédents à chaque écriture. Détecté avant le lancement.
+
+**Limites à garder en tête** :
+- **Montagne mal représentée** : un point par département reste bas, 827 m pour
+  les Hautes-Alpes, et 1 303 m au plus haut (Cantal).
+- **532 lignes de neige avec plus de 5 °C** (0,03 %), à contrôler en Silver.
+- **DuckDB affiche les horodatages dans le fuseau local** : les données sont bien
+  en UTC, mais les calculs d'heure doivent préciser le fuseau.
+
+**Prochaine étape** : étape 4, ajouter ClickHouse et lire les tables Iceberg.
+
+------------------------------------------------------------------------------
