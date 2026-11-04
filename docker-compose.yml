@@ -161,9 +161,37 @@ services:
       retries: 240
       test: ["CMD", "test", "-f", "/tmp/polaris-setup-done"]
 
+  clickhouse:
+    image: clickhouse/clickhouse-server:26.8.36.3
+    ports:
+      # Interface HTTP (le port natif 9000 reste interne : RustFS l'utilise déjà sur l'hôte)
+      - "8123:8123"
+    environment:
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      CATALOG_NAME: ${CATALOG_NAME}
+      BUCKET_NAME: ${BUCKET_NAME}
+      POLARIS_ADMIN_CLIENT_ID: ${POLARIS_ADMIN_CLIENT_ID}
+      POLARIS_ADMIN_CREDENTIALS: ${POLARIS_ADMIN_CREDENTIALS}
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY}
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - ./docker/clickhouse/create-catalog.sh:/docker-entrypoint-initdb.d/create-catalog.sh:ro
+    depends_on:
+      polaris-setup:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+
 volumes:
   rustfs-data:
   postgres-data:
+  clickhouse-data:
 
 configs:
   # Fichier généré par Compose à partir du .env et monté dans polaris-bootstrap :
