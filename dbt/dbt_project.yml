@@ -1,0 +1,9 @@
+name: transition_energetique_regionale
+version: "1.0.0"
+profile: transition_energetique_regionale
+model-paths: ["models"]
+models:
+  transition_energetique_regionale:
+    silver:
+      +schema: silver
+      +materialized: table
