@@ -1,0 +1,58 @@
+version: 2
+
+models:
+  - name: silver_meteo_horaire
+    description: Météo horaire par département, en UTC, issue de bronze.meteo_horaire.
+    columns:
+      - name: code_departement
+        description: Code du département, en texte pour conserver le zéro initial.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: source('bronze', 'ref_departements')
+                field: code_departement
+      - name: horodatage
+        description: Début de l'heure de la mesure, en UTC.
+        data_tests:
+          - not_null
+      - name: temperature_2m
+        description: Température à 2 m, en °C.
+        data_tests:
+          - not_null
+      - name: wind_speed_100m
+        description: Vitesse du vent à 100 m, en m/s.
+        data_tests:
+          - not_null
+      - name: shortwave_radiation
+        description: Rayonnement solaire reçu au sol, en W/m².
+        data_tests:
+          - not_null
+      - name: precipitation
+        description: Précipitations, en mm.
+        data_tests:
+          - not_null
+      - name: snowfall
+        description: Chutes de neige, en cm.
+        data_tests:
+          - not_null
+      - name: snow_depth
+        description: Épaisseur de neige au sol, en m.
+        data_tests:
+          - not_null
+      - name: longitude_grille
+        description: Longitude du point de la grille utilisé par Open-Meteo.
+        data_tests:
+          - not_null
+      - name: latitude_grille
+        description: Latitude du point de la grille utilisé par Open-Meteo.
+        data_tests:
+          - not_null
+      - name: altitude
+        description: Altitude du point de la grille, en m.
+        data_tests:
+          - not_null
+      - name: date_extraction
+        description: Date à laquelle la ligne a été récupérée depuis l'API.
+        data_tests:
+          - not_null

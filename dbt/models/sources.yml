@@ -1,0 +1,27 @@
+version: 2
+sources:
+  - name: bronze
+    schema: polaris
+    quoting:
+      identifier: true
+    tables:
+      - name: meteo_horaire
+        identifier: bronze.meteo_horaire
+        columns:
+          # assumeNotNull en Silver masquerait une valeur vide : on contrôle donc la source.
+          - name: code_departement
+            data_tests:
+              - not_null
+          - name: horodatage
+            data_tests:
+              - not_null
+      - name: ref_departements
+        identifier: bronze.ref_departements
+        columns:
+          - name: code_departement
+            data_tests:
+              - not_null
+              - unique
+          - name: population
+            data_tests:
+              - not_null

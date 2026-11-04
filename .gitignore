@@ -208,3 +208,7 @@ __marimo__/
 
 doc_bak/
 data/
+
+# dbt
+dbt/.user.yml
+dbt/logs/
